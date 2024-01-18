@@ -26,14 +26,14 @@ struct PointXYZ
     }
 };
 
-inline PointXYZ operator*(const PointXYZ P, const float a)
+inline PointXYZ operator*(const PointXYZ p, const float a)
 {
-    return PointXYZ(P.x * a, P.y * a, P.z * a);
+    return PointXYZ(p.x * a, p.y * a, p.z * a);
 }
 
-inline PointXYZ operator/(const PointXYZ P, const float a)
+inline PointXYZ operator/(const PointXYZ p, const float a)
 {
-    return PointXYZ(P.x / a, P.y / a, P.z / a);
+    return PointXYZ(p.x / a, p.y / a, p.z / a);
 }
 
 inline PointXYZ floorPoint(const PointXYZ point)
@@ -71,7 +71,7 @@ namespace
 struct SampledData
 {
     int count;
-    int featureDim;
+    const int featureDim;
 
     PointXYZ accumulatedPoint;
     float features[MAX_FEATURE_DIM];
@@ -81,7 +81,7 @@ struct SampledData
     {
     }
 
-    SampledData(int featureDim, int labelCount) : count(0), accumulatedPoint(), featureDim(featureDim)
+    SampledData(int featureDim, int labelCount) : count(0), featureDim(featureDim), accumulatedPoint()
     {
         for (int featureIdx = 0; featureIdx < featureDim; ++featureIdx)
         {
@@ -93,18 +93,18 @@ struct SampledData
 
     void updatePoint(const float *point)
     {
-        count += 1;
+        ++count;
 
         accumulatedPoint.x += point[0];
         accumulatedPoint.y += point[1];
         accumulatedPoint.z += point[2];
     }
 
-    void updateFeatures(const float *features)
+    void updateFeatures(const float *newFeatures)
     {
         for (int featureIdx = 0; featureIdx < featureDim; ++featureIdx)
         {
-            this->features[featureIdx] += features[featureIdx];
+            features[featureIdx] += newFeatures[featureIdx];
         }
     }
 
@@ -126,22 +126,14 @@ void calcGridSamplingForBatchXYZ(const float *dataXYZ, std::vector<PointXYZ> &sa
 
     std::unordered_map<int, SampledData> gridMap;
 
-    int iX, iY, iZ;
-    int mapKey;
-
     for (int pointIdx = 0; pointIdx < pointCount; ++pointIdx)
     {
         // We calculate the position of the point in a grid map.
-        iX = std::floor((dataXYZ[0] - originCorner.x) / gridSize);
-        iY = std::floor((dataXYZ[1] - originCorner.y) / gridSize);
-        iZ = std::floor((dataXYZ[2] - originCorner.z) / gridSize);
+        const int iX = std::floor((dataXYZ[0] - originCorner.x) / gridSize);
+        const int iY = std::floor((dataXYZ[1] - originCorner.y) / gridSize);
+        const int iZ = std::floor((dataXYZ[2] - originCorner.z) / gridSize);
 
-        mapKey = iX + sampleNX * iY + sampleNX * sampleNY * iZ;
-
-        if (gridMap.count(mapKey) == 0)
-        {
-            gridMap.emplace(mapKey, SampledData());
-        }
+        const int mapKey = iX + sampleNX * iY + sampleNX * sampleNY * iZ;
 
         gridMap[mapKey].updatePoint(dataXYZ);
         dataXYZ += 3;
@@ -181,22 +173,16 @@ void calcGridSamplingForBatch(const float *dataXYZ, const float *features, const
 
     std::unordered_map<int, SampledData> gridMap;
 
-    int iX, iY, iZ;
-    int mapKey;
-
     for (int pointIdx = 0; pointIdx < pointCount; ++pointIdx)
     {
         // We calculate the position of the point in a grid map.
-        iX = std::floor((dataXYZ[0] - originCorner.x) / gridSize);
-        iY = std::floor((dataXYZ[1] - originCorner.y) / gridSize);
-        iZ = std::floor((dataXYZ[2] - originCorner.z) / gridSize);
+        const int iX = std::floor((dataXYZ[0] - originCorner.x) / gridSize);
+        const int iY = std::floor((dataXYZ[1] - originCorner.y) / gridSize);
+        const int iZ = std::floor((dataXYZ[2] - originCorner.z) / gridSize);
 
-        mapKey = iX + sampleNX * iY + sampleNX * sampleNY * iZ;
+        const int mapKey = iX + sampleNX * iY + sampleNX * sampleNY * iZ;
 
-        if (gridMap.count(mapKey) == 0)
-        {
-            gridMap.emplace(mapKey, SampledData(featureDim, labelCount));
-        }
+        gridMap.emplace(mapKey, SampledData(featureDim, labelCount));
 
         SampledData &curData = gridMap[mapKey];
 
@@ -254,8 +240,8 @@ void calcGridSamplingForBatch(const float *dataXYZ, const float *features, const
     }
 }
 
-void calcGridSampling(const torch::Tensor &dataXYZ, const torch::Tensor &features, const torch::Tensor &labels, const torch::Tensor &dataLengths, std::vector<PointXYZ> &sampledXYZ,
-                      std::vector<float> &sampledFeatures, std::vector<int> &sampledLabels, std::vector<int> &sampledLengths, float gridSize)
+void calcGridSampling(const torch::Tensor &dataXYZ, const torch::Tensor &features, const torch::Tensor &labels, const torch::Tensor &dataLengths,
+                      std::vector<PointXYZ> &sampledXYZ, std::vector<float> &sampledFeatures, std::vector<int> &sampledLabels, std::vector<int> &sampledLengths, float gridSize)
 {
     const float *const dataXYZPtr = static_cast<const float *>(dataXYZ.data_ptr());
     const int *const dataLengthsPtr = static_cast<const int *>(dataLengths.data_ptr());
@@ -294,7 +280,7 @@ void calcGridSampling(const torch::Tensor &dataXYZ, const torch::Tensor &feature
     std::vector<std::vector<int>> curSampledLabels(batchCount);
 
     // We compile without OpenMP: even though it provides gains for high batch sizes/point counts, it seems to slow down the training for the typical use-case.
-    // #pragma omp parallel for
+    // #pragma omp parallel for num_threads(omp_get_max_threads())
     for (int batchIdx = 0; batchIdx < batchCount; ++batchIdx)
     {
         if (features.numel() == 0 && labels.numel() == 0)
@@ -339,15 +325,14 @@ void calcGridIndexAssignment(const float *dataXYZ, int pointCount, std::vector<i
     const int sampleNX = std::floor((maxCorner.x - originCorner.x) / gridSize) + 1;
     const int sampleNY = std::floor((maxCorner.y - originCorner.y) / gridSize) + 1;
 
-    int iX, iY, iZ;
     assignedInds = std::vector<int>(pointCount);
 
     for (int pointIdx = 0; pointIdx < pointCount; ++pointIdx)
     {
         // We calculate the position of the point in a grid map.
-        iX = std::floor((dataXYZ[0] - originCorner.x) / gridSize);
-        iY = std::floor((dataXYZ[1] - originCorner.y) / gridSize);
-        iZ = std::floor((dataXYZ[2] - originCorner.z) / gridSize);
+        const int iX = std::floor((dataXYZ[0] - originCorner.x) / gridSize);
+        const int iY = std::floor((dataXYZ[1] - originCorner.y) / gridSize);
+        const int iZ = std::floor((dataXYZ[2] - originCorner.z) / gridSize);
 
         assignedInds[pointIdx] = iX + sampleNX * iY + sampleNX * sampleNY * iZ;
         dataXYZ += 3;

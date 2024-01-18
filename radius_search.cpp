@@ -12,9 +12,9 @@
 
 using namespace torch::indexing;
 
-struct PointCloud
+struct PointCloudR
 {
-    PointCloud(size_t size_, const float *points_) : size(size_), points(points_)
+    PointCloudR(size_t size_, const float *points_) : size(size_), points(points_)
     {
     }
 
@@ -44,7 +44,7 @@ void radiusSearchNanoflann(const torch::Tensor &dataXYZ, const torch::Tensor &qu
     const float radiusSquared = radius * radius;
     const int queryCount = queriesXYZ.sizes()[0];
 
-    std::vector<std::vector<std::pair<size_t, float>>> queryResults(queryCount);
+    std::vector<std::vector<nanoflann::ResultItem<uint32_t, float>>> queryResults(queryCount);
 
     const float *const dataPtr = static_cast<const float *>(dataXYZ.data_ptr());
     const float *const queryPtr = static_cast<const float *>(queriesXYZ.data_ptr());
@@ -53,9 +53,8 @@ void radiusSearchNanoflann(const torch::Tensor &dataXYZ, const torch::Tensor &qu
     const int *const queriesLengthsPtr = static_cast<const int *>(queriesLengths.data_ptr());
 
     const nanoflann::KDTreeSingleIndexAdaptorParams treeParams(10);
-    const nanoflann::SearchParams searchParams(32, 0.0f, true);
 
-    typedef nanoflann::KDTreeSingleIndexAdaptor<nanoflann::L2_Simple_Adaptor<float, PointCloud>, PointCloud, 3> my_kd_tree_t;
+    typedef nanoflann::KDTreeSingleIndexAdaptor<nanoflann::L2_Simple_Adaptor<float, PointCloudR>, PointCloudR, 3> my_kd_tree_t;
 
     const int batchCount = dataLengths.sizes()[0];
 
@@ -74,12 +73,12 @@ void radiusSearchNanoflann(const torch::Tensor &dataXYZ, const torch::Tensor &qu
         queryIndexOffset += queriesLengthsPtr[batchIdx];
     }
 
-    std::vector<size_t> maxMatchCounts(batchCount, 0u);
+    std::vector<uint32_t> maxMatchCounts(batchCount, 0u);
 
 #pragma omp parallel for
     for (int batchIdx = 0; batchIdx < batchCount; ++batchIdx)
     {
-        PointCloud curPointCloud(dataLengthsPtr[batchIdx], dataPtr + 3 * dataIndexOffsets[batchIdx]);
+        PointCloudR curPointCloud(dataLengthsPtr[batchIdx], dataPtr + 3 * dataIndexOffsets[batchIdx]);
         my_kd_tree_t *index = nullptr;
 
         index = new my_kd_tree_t(3, curPointCloud, treeParams);
@@ -92,7 +91,7 @@ void radiusSearchNanoflann(const torch::Tensor &dataXYZ, const torch::Tensor &qu
             const int globalQueryIdx = queryIndexOffsets[batchIdx] + queryIdx;
             queryResults[globalQueryIdx].reserve(maxMatchCounts[batchIdx]);
 
-            const size_t matchCount = index->radiusSearch(curQueryPtr, radiusSquared, queryResults[globalQueryIdx], searchParams);
+            const uint32_t matchCount = index->radiusSearch(curQueryPtr, radiusSquared, queryResults[globalQueryIdx]);
             curQueryPtr += 3;
 
             maxMatchCounts[batchIdx] = std::max(matchCount, maxMatchCounts[batchIdx]);
@@ -101,7 +100,7 @@ void radiusSearchNanoflann(const torch::Tensor &dataXYZ, const torch::Tensor &qu
         delete index;
     }
 
-    const size_t maxMatchCount = *std::max_element(maxMatchCounts.begin(), maxMatchCounts.end());
+    const uint32_t maxMatchCount = *std::max_element(maxMatchCounts.begin(), maxMatchCounts.end());
     const int padValue = dataXYZ.sizes()[0];
 
     neighborInds.resize(queryCount * maxMatchCount, padValue);

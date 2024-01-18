@@ -26,10 +26,13 @@ add_library(kpconv_operators SHARED ${HEADERS} ${SOURCES})
 target_compile_features(kpconv_operators PRIVATE cxx_range_for)
 target_compile_features(kpconv_operators PUBLIC cxx_std_14)
 
+find_package(Threads)
+
 # Link against LibTorch
 target_link_libraries(kpconv_operators torch)
 target_link_libraries(kpconv_operators nanoflann::nanoflann)
 target_link_libraries(kpconv_operators OpenMP::OpenMP_CXX)
+target_link_libraries(kpconv_operators Threads::Threads)
 
 if(${CMAKE_VERSION} GREATER_EQUAL "3.18")
     set_property(TARGET kpconv_operators PROPERTY CUDA_ARCHITECTURES 50 52 60 61 70 75 80 86)
