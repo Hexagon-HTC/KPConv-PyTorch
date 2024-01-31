@@ -22,9 +22,9 @@ radius_search.cpp
 
 add_library(kpconv_operators SHARED ${HEADERS} ${SOURCES})
 
-# Enable C++14
+# Enable C++17
 target_compile_features(kpconv_operators PRIVATE cxx_range_for)
-target_compile_features(kpconv_operators PUBLIC cxx_std_14)
+target_compile_features(kpconv_operators PUBLIC cxx_std_17)
 
 find_package(Threads)
 
