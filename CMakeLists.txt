@@ -34,10 +34,6 @@ target_link_libraries(kpconv_operators nanoflann::nanoflann)
 target_link_libraries(kpconv_operators OpenMP::OpenMP_CXX)
 target_link_libraries(kpconv_operators Threads::Threads)
 
-if(${CMAKE_VERSION} GREATER_EQUAL "3.18")
-    set_property(TARGET kpconv_operators PROPERTY CUDA_ARCHITECTURES 50 52 60 61 70 75 80 86)
-endif()
-
 if (MSVC)
     foreach( OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES} )
         install(TARGETS kpconv_operators EXPORT kpconv_operators
