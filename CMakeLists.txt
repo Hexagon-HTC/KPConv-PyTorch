@@ -5,7 +5,7 @@ include(${CMAKE_BINARY_DIR}/conan_paths.cmake)
 
 find_package(Torch REQUIRED)
 find_package(nanoflann REQUIRED)
-find_package(OpenMP REQUIRED)
+find_package(OpenMP REQUIRED CXX)
 
 # Define our library target
 set(HEADERS
